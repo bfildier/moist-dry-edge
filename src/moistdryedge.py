@@ -144,9 +144,44 @@ class Edge():
         if out:
             return result
 
+    def computeGradNormStatOnEdge(self,arr,varid,fname='mean',out=False):
+
+        """Applies function f to norm(grad(arr)) and stores the result as
+        a new attribute self.${varid}_gradnorm_mean
+
+        Arguments:
+        - arr: 2D numpy array
+        - varid: str
+        - fname: str, assumes it is a unary numpy method"""
+
+        # calculate gradnorm of smoothed field
+        arr_smooth = gaussian_filter(arr,self.sigma_smooth,mode='wrap')
+        gradnorm = self.grad2Dnorm(arr_smooth)
+
+        # calculate stat on edge
+        result = self.computeStatOnEdge(gradnorm,varid+'_gradnorm',fname,out)
+
+        if out:
+            return result
+
+    def computeFractionArea(self,arr,varid,out=False):
+
+        """Creates a timeseries for fraction area of the dry region based on a 
+        threshold stored as attribute. 
+
+        Arguments:
+        - arr: 2D numpy array of variable on which the threshold is applied
+        - varid: str for attribute ${varid}_mean used as threshold"""
+
+        thres = getattr(self,"%s_mean"%varid)
+        fracarea = np.sum(arr<thres)/arr.size
+        setattr(self,"fracarea_%s"%varid,fracarea)
+
+        if out:
+            return fracarea
+
 
 class EdgeOverTime(Edge):
-
 
     def __init__(self,mask_mode='thres',sigma_smooth=8,coef_mask=0.6,thres=0.5,\
     epsilon=1e-3):
@@ -154,9 +189,11 @@ class EdgeOverTime(Edge):
         """Constructor of class EdgeOverTime.
         See Edge.__init__ for details."""
 
-        super().__init__(self,mask_mode=mask_mode,sigma_smooth=sigma_smooth,\
-            coef_mask=coef_mask,thres=thres,\
-            epsilon=epsilon)
+        # super().__init__(mask_mode=mask_mode,sigma_smooth=sigma_smooth,\
+        #     coef_mask=coef_mask,thres=thres,\
+        #     epsilon=epsilon)
+        super().__init__(mask_mode=mask_mode,sigma_smooth=sigma_smooth,\
+            coef_mask=coef_mask,thres=thres,epsilon=epsilon)
         
     def compute(self,arr):
 
@@ -170,18 +207,75 @@ class EdgeOverTime(Edge):
         self.edges = []
         for i_t in range(self.Nt):
 
-            self.edges.append(super().compute(self,arr=arr[i_t]))
+            # initialize
+            e = Edge(mask_mode=self.mask_mode,sigma_smooth=self.sigma_smooth,\
+            coef_mask=self.coef_mask,thres=self.thres,epsilon=self.epsilon)
+            # compute
+            e.compute(arr=arr[i_t])
+            # store
+            self.edges.append(e)
 
     def computeStatOnEdge(self, arr, varid, fname='mean'):
 
+        """Applies function f to values on moist-dry boundary and stores the 
+        result as attribute in self.${varid}_${fname}
+        
+        Arguments:
+        - arr: 2D numpy array
+        - varid: str
+        - fname: str, assumes it is a unary numpy method"""
+
+        # initalize object attribute and temp array
         attrname = "%s_%s"%(varid,fname)
-        setattr(self,attrname,np.nan*np.zeros((self.Nt,)))
+        vals = np.nan*np.zeros((self.Nt,))
         
         for i_t in range(self.Nt):
 
-            val = self.edges[i_t].computeStatOnEdge(arr[i_t], varid, fname=fname,\
+            vals[i_t] = self.edges[i_t].computeStatOnEdge(arr[i_t], varid, fname=fname,\
                 out=True)
-            setattr(self,getattr(self,attrname)[i_t],val)
+
+        # store 
+        setattr(self,attrname,vals)
+
+    def computeGradNormStatOnEdge(self, arr, varid, fname='mean'):
+
+        """Applies function f to norm(grad(arr)) and stores the result as
+        a new attribute self.${varid}_gradnorm_mean
+
+        Arguments:
+        - arr: 2D numpy array
+        - varid: str
+        - fname: str, assumes it is a unary numpy method"""
+
+        attrname = "%s_gradnorm_%s"%(varid,fname)
+        vals = np.nan*np.zeros((self.Nt,))
+        
+        for i_t in range(self.Nt):
+
+            vals[i_t] = self.edges[i_t].computeGradNormStatOnEdge(arr[i_t], varid, fname=fname,\
+                out=True)
+            
+        # stores timeseries
+        setattr(self,attrname,vals)
+
+    def computeFractionArea(self,arr,varid):
+
+        """Creates a timeseries for fraction area of the dry region based on a 
+        threshold stored as attribute. 
+
+        Arguments:
+        - arr: 2D numpy array of variable on which the threshold is applied
+        - varid: str for attribute ${varid}_mean used as threshold"""
+
+        attrname = "fracarea_%s"%varid
+        vals = np.nan*np.zeros((self.Nt,))
+        
+        for i_t in range(self.Nt):
+
+            vals[i_t] = self.edges[i_t].computeFractionArea(arr[i_t],varid,out=True)
+
+        setattr(self,attrname,vals)
+
         
 
 
